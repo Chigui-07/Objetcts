@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>OBJECTS — El Rincón Olvidado</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#171323;color:#ffedcf;font:14px system-ui}button{font:inherit;color:inherit;cursor:pointer}main{max-width:1180px;margin:auto;padding:8px}header,.shop,footer{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:8px}header b{font-size:20px;color:#ffdf76}header span{background:#302839;border:1px solid #6e5c70;border-radius:8px;padding:7px}canvas{width:100%;aspect-ratio:960/430;background:#48354d;border:2px solid #96806b;border-radius:12px;touch-action:none;display:block}.shop button{flex:1;min-width:0;background:#30273b;border:2px solid #70566e;border-radius:10px;padding:9px 2px}.shop .active{border-color:#ffd76a;background:#5e4b3f}.shop button:disabled{opacity:.35}footer{font-size:12px}footer button,.modal button{background:#70503d;padding:9px;border:1px solid #dcaa68;border-radius:9px}.veil{position:fixed;inset:0;background:#100c19e8;display:grid;place-items:center;padding:15px}.veil.hide{display:none}.modal{max-width:470px;background:#30273c;border:1px solid #b7986f;border-radius:16px;padding:24px;text-align:center}.modal h1{color:#ffd977;margin:0}.modal p{line-height:1.6}@media(max-width:700px){header b{font-size:14px}header span{padding:3px}.shop button{font-size:10px;padding:5px 0}main{padding:4px}}
+</style></head><body><main><header><b>⚡ OBJECTS</b><span id="lv">Nivel 1</span><span id="wave">Preparación</span><span id="energy">⚡ 50</span><button id="pause">⏸</button></header><canvas id="board" width="960" height="430"></canvas><nav class="shop" id="shop"></nav><footer><span id="hint">Selecciona un defensor y toca una casilla.</span><button id="restart">Reiniciar</button></footer></main><section id="veil" class="veil"><div class="modal"><h1 id="title">OBJECTS</h1><p id="desc"></p><button id="action">Comenzar</button></div></section>
+<script>
+(()=>{
+"use strict";
+const $=id=>document.getElementById(id),cv=$("board"),g=cv.getContext("2d"),X=75,Y=46,CW=94,RH=69,KEY="objects-web-level";
+const units={paper:{icon:"📄",name:"Hoja",cost:100,hp:100,cd:10},lamp:{icon:"💡",name:"Lámpara",cost:50,hp:80,cd:8},rock:{icon:"🪨",name:"Roca",cost:50,hp:600,cd:15},scissors:{icon:"✂️",name:"Tijera",cost:25,hp:1,cd:12},eraser:{icon:"🧽",name:"Borrador",cost:0,hp:0,cd:0}};
+const types={basic:{hp:100,shield:0,icon:"⚫"},card:{hp:100,shield:75,icon:"📦"},metal:{hp:100,shield:125,icon:"🖇️"},candle:{hp:100,shield:0,icon:"🕯️"}};
+const levels=[
+{has:["paper"],waves:[["basic"],["basic","basic"]],info:"Aprende a utilizar la hoja de papel. Recoge rayitos amarillos para colocarla."},
+{has:["paper","lamp"],waves:[["basic","basic"],["basic","basic","basic"],["basic","basic","basic"]],info:"La lámpara genera 50 de Energía cada 20 segundos."},
+{has:["paper","lamp","rock"],waves:[["basic","card"],["card","basic"],["card","basic","card"]],info:"La roca detiene manchas. La Mancha Acartonada lleva un escudo."},
+{has:["paper","lamp","rock","eraser"],waves:[["card","metal"],["basic","metal"],["card","metal","basic"],["metal","card","basic"]],info:"El borrador retira objetos sin devolver Energía. Aparece la Mancha Metálica."},
+{has:["paper","lamp","rock","scissors","eraser"],waves:[["basic","card"],["metal","basic"],["card","metal","basic"],["metal","card","basic","metal"],["metal","basic","card","metal"]],info:"Prueba final: utiliza la tijera, una trampa de un solo uso, y todos tus defensores."}
+];
+let max=1;try{max=Math.min(5,Math.max(1,Number(localStorage.getItem(KEY))||1))}catch(e){}
+let lv=max,mode="menu",energy=50,selected="paper",cells=[],mobs=[],bullets=[],drops=[],cd={},prep=20,wave=-1,queue=[],interval=2,fall=3,wait=0,losing=0,anim=0,spawnCount=0;
+const rand=(a,b)=>a+Math.random()*(b-a),center=(r,c)=>({x:X+(c+.5)*CW,y:Y+(r+.5)*RH}),cap=(v,a,b)=>Math.max(a,Math.min(b,v));
+function modal(title,desc,button,fn){$("title").textContent=title;$("desc").textContent=desc;$("action").textContent=button;$("action").onclick=fn;$("veil").classList.remove("hide")}
+function close(){$("veil").classList.add("hide")}
+function shop(){$("shop").innerHTML="";Object.entries(units).forEach(([id,u])=>{let b=document.createElement("button");b.textContent=u.icon+" "+u.name+" "+(u.cost?" "+u.cost+"⚡":"");b.disabled=!levels[lv-1].has.includes(id);b.className=selected===id?"active":"";b.onclick=()=>{selected=id;shop()};$("shop").appendChild(b)})}
+function ui(){$("lv").textContent="Nivel "+lv;$("energy").textContent="⚡ "+energy;$("wave").textContent=wave<0?"Inicio: "+Math.ceil(prep)+"s":"Oleada "+(wave+1)+"/"+levels[lv-1].waves.length}
+function start(n){lv=n;mode="paused";energy=50;selected="paper";cells=Array.from({length:5},()=>Array(9).fill(null));mobs=[];bullets=[];drops=[];cd={};prep=20;wave=-1;queue=[];interval=2;fall=2;wait=0;spawnCount=0;shop();ui();modal("NIVEL "+lv,levels[lv-1].info+" Tienes 20 segundos para prepararte.","Jugar",()=>{close();mode="playing"})}
+function enemy(type,row){const m=types[type];mobs.push({type,row,x:X+9*CW+20,hp:m.hp,shield:m.shield})}
+function nextWave(){wave++;wait=0;if(wave===levels[lv-1].waves.length){win();return}queue=[...levels[lv-1].waves[wave]];spawnCount=0;interval=2;enemy("candle",lv===1?2:Math.floor(rand(0,5)));ui()}
+function win(){mode="win";let unlock=["Lámpara de mesa","Roca","Borrador","Tijera","Mapa de mundos"][lv-1];if(lv<5){max=Math.max(max,lv+1);try{localStorage.setItem(KEY,max)}catch(e){}}modal("¡Victoria!","Desbloqueaste: "+unlock+".",lv<5?"Nivel "+(lv+1):"Repetir Nivel 5",()=>start(Math.min(5,lv+1)))}
+function lose(){mode="lose";losing=1.5}
+function collect(x,y){let idx=drops.findIndex(d=>Math.hypot(d.x-x,d.y-y)<34);if(idx>=0){drops.splice(idx,1);energy+=50;ui();return true}return false}
+cv.addEventListener("pointerdown",e=>{if(mode!=="playing")return;const rc=cv.getBoundingClientRect(),x=(e.clientX-rc.left)*960/rc.width,y=(e.clientY-rc.top)*430/rc.height;if(collect(x,y))return;const c=Math.floor((x-X)/CW),r=Math.floor((y-Y)/RH);if(r<0||r>=5||c<0||c>=9)return;if(selected==="eraser"){cells[r][c]=null;$("hint").textContent="Defensor retirado sin reembolso.";return}let u=units[selected];if(cells[r][c]){$("hint").textContent="Casilla ocupada.";return}if(energy<u.cost){$("hint").textContent="Necesitas más Energía.";return}if(cd[selected]>0){$("hint").textContent="Recargando: "+Math.ceil(cd[selected])+"s";return}cells[r][c]={id:selected,hp:u.hp,timer:selected==="paper"?2:20};energy-=u.cost;cd[selected]=u.cd;ui()});
+function hit(m,damage){let blocked=Math.min(m.shield,damage);m.shield-=blocked;m.hp-=damage-blocked}
+function update(dt){for(let key in cd)cd[key]=Math.max(0,cd[key]-dt);fall-=dt;if(fall<=0){fall=rand(3.5,5.5);drops.push({x:rand(X+35,X+9*CW-35),y:-10,stop:rand(95,345),life:15})}drops=drops.filter(d=>(d.life-=dt)>0);drops.forEach(d=>d.y=Math.min(d.stop,d.y+85*dt));
+if(wave<0){prep-=dt;if(prep<=0)nextWave()}else if(queue.length){interval-=dt;if(interval<=0){let type=queue.shift();enemy(type,lv===1?2:(spawnCount++*2+wave)%5);interval=2}}else if(!mobs.length){wait+=dt;if(wait>=1.5)nextWave()}
+for(let r=0;r<5;r++)for(let c=0;c<9;c++){let ob=cells[r][c];if(!ob)continue;ob.timer-=dt;let p=center(r,c);if(ob.id==="lamp"&&ob.timer<=0){drops.push({x:p.x,y:p.y,stop:p.y,life:14});ob.timer+=20}if(ob.id==="paper"&&ob.timer<=0){if(mobs.some(m=>m.row===r&&m.x>p.x)){bullets.push({x:p.x+20,y:p.y,row:r});ob.timer+=2}else ob.timer=0}}
+bullets=bullets.filter(b=>{b.x+=320*dt;let m=mobs.find(e=>e.row===b.row&&Math.abs(e.x-b.x)<23);if(m){hit(m,20);return false}return b.x<960});
+for(const m of mobs){if(m.hp<=0)continue;const c=Math.floor((m.x-X)/CW),ob=c>=0&&c<9?cells[m.row][c]:null;if(ob){if(ob.id==="scissors"){mobs.filter(x=>x.row===m.row&&Math.abs(x.x-m.x)<CW*.6).forEach(x=>x.hp=0);cells[m.row][c]=null}else{ob.hp-=20*dt;if(ob.hp<=0)cells[m.row][c]=null}}else m.x-=CW*dt;if(m.x<X-28){lose();return}}
+mobs=mobs.filter(m=>m.hp>0);ui()}
+function draw(){g.fillStyle="#322840";g.fillRect(0,0,960,430);g.fillStyle="#674d4d";g.fillRect(0,0,960,42);g.fillStyle="#f8d888";g.font="bold 20px system-ui";g.fillText("EL RINCÓN OLVIDADO",16,28);
+for(let r=0;r<5;r++)for(let c=0;c<9;c++){g.fillStyle=(r+c)%2?"#806e5b":"#96816a";g.fillRect(X+c*CW+1,Y+r*RH+1,CW-2,RH-2)}g.fillStyle="#211526";g.fillRect(0,Y,X-5,5*RH);g.fillRect(X+9*CW,Y,40,5*RH);
+for(let r=0;r<5;r++){g.font="22px system-ui";g.fillText("🛡️",18,Y+(r+.6)*RH)}
+for(let r=0;r<5;r++)for(let c=0;c<9;c++){const ob=cells[r][c];if(!ob)continue;const {x,y}=center(r,c);g.textAlign="center";g.font="39px system-ui";g.fillText(units[ob.id].icon,x,y+12);g.fillStyle="#56da91";g.fillRect(x-24,y+18,48*cap(ob.hp/units[ob.id].hp,0,1),4);if(ob.id==="rock"){g.fillStyle="#eed6b7";g.font="12px system-ui";g.fillText(ob.hp>400?"●":ob.hp>200?"◕":"◔",x+26,y-20)}g.textAlign="left"}
+for(const b of bullets){g.font="25px system-ui";g.fillText("➤",b.x,b.y+8)}
+for(const m of mobs){const y=center(m.row,0).y;g.fillStyle="#090711";g.beginPath();g.ellipse(m.x,y,25,24,0,0,Math.PI*2);g.fill();g.fillStyle="white";g.beginPath();g.arc(m.x-8,y-3,5,0,7);g.arc(m.x+8,y-3,5,0,7);g.fill();if(m.shield>0){g.font="32px system-ui";g.textAlign="center";g.fillText(types[m.type].icon,m.x,y+10);g.textAlign="left"}if(m.type==="candle"){g.font="26px system-ui";g.fillText("🕯️",m.x-13,y-26)}g.fillStyle="#e86c7b";g.fillRect(m.x-22,y+28,44*cap(m.hp/100,0,1),4)}
+for(const d of drops){g.shadowColor="#ffe765";g.shadowBlur=13;g.font="30px system-ui";g.fillText("⚡",d.x,d.y);g.shadowBlur=0}
+if(mode==="lose"){g.fillStyle="#06040de0";g.fillRect(0,0,960,430);g.fillStyle="#ba82ca";g.textAlign="center";g.font="bold 30px system-ui";g.fillText("LA NADA CONTAMINA TODO",480,215);g.textAlign="left"}}
+let last=performance.now();function frame(now){const dt=cap((now-last)/1000,0,.05);last=now;if(mode==="playing")update(dt);if(mode==="lose"&&(losing-=dt)<=0){mode="over";modal("La Nada ha avanzado","Una Mancha cruzó un carril. El lugar fue contaminado.","Reintentar",()=>start(lv))}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
+$("restart").onclick=()=>start(lv);$("pause").onclick=()=>{if(mode!=="playing")return;mode="paused";modal("Pausa","La partida está detenida.","Continuar",()=>{close();mode="playing"})};
+modal("OBJECTS ⚡","El Rincón Olvidado. Tutorial web experimental de cinco niveles. Gira tu teléfono horizontalmente.","Nivel "+lv,()=>start(lv));shop();ui();
+})();
+</script></body></html>
