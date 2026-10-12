@@ -31,3 +31,7 @@ Sustancia radiactiva amarilla dio vida y poderes a objetos que dependen de ella 
 
 ## Futuro
 Mundo 1: La Habitación (25 niveles), mundos posteriores de 25 o más, jefes por mundo, desbloqueo secuencial. Fuera del alcance del prototipo.
+
+
+## Estado de implementación (v0.1.1)
+Actualmente se implementa y se prueba **solo Nivel 1**. Los niveles 2–5 descritos arriba son el plan, no contenido jugable. Los rayitos se recogen automáticamente al caer para evitar bloqueos en el prototipo móvil. No se modifican los costos oficiales de defensores. Se debe probar en el navegador del teléfono antes de avanzar al Nivel 2.
